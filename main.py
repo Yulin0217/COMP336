@@ -32,12 +32,11 @@ def task_1(data):
     data = data.withColumn("Date", F.date_format(china_standard_timestamp, "yyyy-MM-dd"))
     data = data.withColumn("Time", F.date_format(china_standard_timestamp, "HH:mm:ss"))
     # Update timestamp by adding 8/24
-    data = data.withColumn("Timestamp", df["Timestamp"] + 8/24)
+    data = data.withColumn("Timestamp", df["Timestamp"] + 8 / 24)
 
     return data
 
 
-# Process the data
 df_task_1 = task_1(df)
 
 # Display the results
@@ -46,28 +45,28 @@ df_task_1.show()
 
 
 def task_2(df):
-    # Calculate the count of records for each user per day
-    count_per_day = df.groupBy("UserID", "Date").count()
-    #count_per_day.show()
-    # Filter out the records where a user has at least five data points in a day
-    at_least_five = count_per_day.filter(count_per_day['count'] >= 5)
-    # at_least_five.show()
-    # Calculate the number of days each user has at least five data points
-    days_per_user = at_least_five.groupBy("UserID").count()
-    # days_per_user.show()
-    # Sort users by the number of qualifying days in descending order, and then by UserID in ascending order
-    top_users = days_per_user.orderBy(F.desc("count"), F.asc("UserID"))
+    # Calculate the count of data points recorded for each user a day
+    count_each_usr_a_day = df.groupBy("UserID", "Date").count()
+    #count_each_usr_a_day.show()
 
-    # Select the top 5 users
-    top_five_users = top_users.limit(5)
+    # Filter out all items in groups that a user has submitted 5 or more data points in a day
+    at_least_five_records = count_each_usr_a_day.filter(count_each_usr_a_day['count'] >= 5)
+    # at_least_five_records.groupBy("UserID").count().show()
+    # Get the user ID and their days count that have at least five data points, and use agg combines .alias() to change the colum name
+    usr_ID_and_count = at_least_five_records.groupBy("UserID").agg(F.count("Date").alias("DaysWithAtLeastFiveRecords"))
+    # usr_ID_and_count.show()
+    # Sort by the days count in descending order, and  by UserID in ascending order
+    top_users = usr_ID_and_count.orderBy(F.desc("DaysWithAtLeastFiveRecords"), F.asc("UserID"))
 
-    # Return the result
-    return top_five_users
+    # get the top 5 users
+    top_five = top_users.limit(5)
+
+    return top_five
 
 
 # Display the results
 print("Task 2: ")
-top_five_users = task_2(df)
+top_five_users = task_2(task_1(df))
 top_five_users.show()
 
 
