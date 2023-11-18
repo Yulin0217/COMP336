@@ -10,23 +10,29 @@ df_path = 'dataset.txt'
 
 # Read the data with inferred schema to auto judge data types
 df = spark.read.csv(df_path, header=True, inferSchema=True)
+# To keep the Date format correct
+df = df.withColumn("Date", F.date_format("Date", "yyyy-MM-dd"))
 
 
 # Task 1 function
 def task_1(data):
     # Use unix_timestamp to convert a "Date and Time" (with format: "yyyy-MM-dd HH:mm:ss") String to unix_timestamp
-    # unix_timestamp is in second format (seconds after 1970/1/1) (Prepare for time zone convert)
+    # unix_timestamp is in long format (indicate how many seconds after 1/1/1970) (Prepare for time zone convert)
     # Use expr to perform SQL command, and use concate to merge Date and Time
-    timestamp = unix_timestamp(expr("concat(Date, ' ', Time)"), "yyyy-MM-dd HH:mm:ss")
+    timestamp = unix_timestamp(expr("concat(Date, ' ', Time)"), "yyyy-MM-dd HH:mm:ss").cast("long")
 
     # Adjust the timestamp for the China time zone
     # 28800 is in seconds format and equal to 8 hours
     # Use cast("timestamp") to convert seconds to standard timestamp
-    china_timestamp = (timestamp + 28800).cast("timestamp")
+    china_standard_timestamp = (timestamp + 28800).cast("timestamp")
 
-    # Extract the date and time from the adjusted timestamp
-    data = data.withColumn("Date", F.date_format(china_timestamp, "yyyy-MM-dd"))
-    data = data.withColumn("Time", F.date_format(china_timestamp, "HH:mm:ss"))
+    # Convert timestamp into String format
+    # Use F.date_format to convert a timestamp to the format "yyyy-MM-dd" or "HH:mm:ss"
+    # Use data.withColumn to Replace the previous Time and Date columns with the new China time.
+    data = data.withColumn("Date", F.date_format(china_standard_timestamp, "yyyy-MM-dd"))
+    data = data.withColumn("Time", F.date_format(china_standard_timestamp, "HH:mm:ss"))
+    # Update timestamp by adding 8/24
+    data = data.withColumn("Timestamp", df["Timestamp"] + 8/24)
 
     return data
 
@@ -42,13 +48,13 @@ df_task_1.show()
 def task_2(df):
     # Calculate the count of records for each user per day
     count_per_day = df.groupBy("UserID", "Date").count()
-
+    #count_per_day.show()
     # Filter out the records where a user has at least five data points in a day
     at_least_five = count_per_day.filter(count_per_day['count'] >= 5)
-
+    # at_least_five.show()
     # Calculate the number of days each user has at least five data points
     days_per_user = at_least_five.groupBy("UserID").count()
-
+    # days_per_user.show()
     # Sort users by the number of qualifying days in descending order, and then by UserID in ascending order
     top_users = days_per_user.orderBy(F.desc("count"), F.asc("UserID"))
 
