@@ -1,7 +1,7 @@
 from pyspark.sql import SparkSession, Window
 import pyspark.sql.functions as F
 from pyspark.sql.functions import unix_timestamp, from_unixtime, col, expr
-from pyspark.sql.types import FloatType
+from pyspark.sql.types import FloatType, LongType, DoubleType
 from math import radians, sin, cos, sqrt, atan2
 
 # Start a SparkSession
@@ -42,8 +42,8 @@ def task_1(dataframe):
 
 # Display the results
 df_task_1 = task_1(df)
-# print("Task 1: ")
-# df_task_1.show()
+print("Task 1: ")
+df_task_1.show()
 
 
 # Task 2 function
@@ -68,9 +68,9 @@ def task_2(dataframe):
 
 
 # Display the results
-# print("Task 2: ")
-# top_five_users = task_2(task_1(df))
-# top_five_users.show()
+print("Task 2: ")
+top_five_users = task_2(task_1(df))
+top_five_users.show()
 
 
 # Task 3 function
@@ -87,6 +87,7 @@ def task_3(dataframe):
     more_than_100_records = count_per_week.filter(count_per_week['count'] > 100)
 
     # Calculate the number of weeks each user has submitted more than 100 data points
+    # Use countDistinct to get weeks not same
     weeks_a_user = more_than_100_records.groupBy("UserID").agg(
         F.countDistinct("WhichWeek").alias("WeeksMoreThan100Record"))
 
@@ -95,9 +96,10 @@ def task_3(dataframe):
 
 
 # Display the results
-# print("Task 3: ")
-# weeks_per_user = task_3(df_task_1)
-# weeks_per_user.show()
+print("Task 3: ")
+weeks_per_user = task_3(df_task_1)
+weeks_per_user.show()
+
 
 # Task 4 function
 
@@ -134,9 +136,9 @@ def task_4(dataframe):
 
 
 # Display the results
-# print("Task 4: ")
-# top_five_users_week = task_4(df_task_1)
-# top_five_users_week.show()
+print("Task 4: ")
+top_five_users_week = task_4(df_task_1)
+top_five_users_week.show()
 
 
 # Task 5 function
@@ -147,77 +149,133 @@ def task_5(dataframe):
     # Convert the  feet to meters 1 foot = 0.3048 m, and get the largest Altitude span in a day
     max_span = span.groupBy(["UserID"]).agg((F.max("AltitudeSpan") * 0.3048).alias("MAXSpan"))
 
-    # Order the users in descending order (Using MAX_span) and get top 5 users
+    # Order the users in descending order (Based on MAXSpan ) and get top 5 users
     top_five_span_users = max_span.orderBy(F.desc("MAXSpan")).limit(5)
 
     return top_five_span_users
 
+
 # Display the results
-# print("Task 5: ")
-# top_five_span = task_5(df_task_1)
-# top_five_span.show()
+print("Task 5: ")
+top_five_span = task_5(df_task_1)
+top_five_span.show()
+
 
 # Task 6 function
-def haversine(lon1, lat1, lon2, lat2):
-    """Calculate the great circle distance between two points on the earth."""
-    # 检查经纬度值是否为 None
-    if None in (lon1, lat1, lon2, lat2):
-        return 0.0  # 如果有任何值为 None，返回距离 0
+# From :Getting distance between two points based on latitude/longitude
+# https://stackoverflow.com/questions/19412462/getting-distance-between-two-points-based-on-latitude-longitude
+def distance(lon1, lat1, lon2, lat2):
+    # Earth radius (In kilometres)）
+    R = 6373.0
+    # Converting latitude and longitude to radians
+    lat1 = radians(lat1)
+    lon1 = radians(lon1)
+    lat2 = radians(lat2)
+    lon2 = radians(lon2)
 
-    # 将经纬度转换为弧度
-    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
-
-    # 计算经纬度差
+    # Calculate the difference in latitude and longitude
     dlon = lon2 - lon1
     dlat = lat2 - lat1
 
-    # 哈弗辛公式
-    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
-    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    # Formular
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
 
-    # 地球半径（千米）
-    r = 6371
-
-    return c * r
-
-
-
+    return c * R
 
 
 def task_6(dataframe):
-    # Register the UDF
-    haversine_udf = F.udf(haversine, FloatType())
+    # PySpark UDF’s are similar to UDF on traditional databases.
+    # In PySpark, you create a function in a Python syntax and wrap it with PySpark SQL udf() or register it as udf and use it on DataFrame and SQL respectively.
+    # From https://sparkbyexamples.com/pyspark/pyspark-udf-user-defined-function/
+    # Use DoubleType to get the most accurate results
+    distance_udf = F.udf(distance, DoubleType())
 
-    # Define the window specification for lag function
+    # Define the window specification and orderBy Timestamp
     windowSpec = Window.partitionBy("UserID", "Date").orderBy("Timestamp")
 
-    # Calculate the distance between consecutive points
-    dataframe = dataframe.withColumn("PrevLatitude", F.lag("Latitude").over(windowSpec))
-    dataframe = dataframe.withColumn("PrevLongitude", F.lag("Longitude").over(windowSpec))
-    dataframe = dataframe.withColumn("Distance", haversine_udf("Longitude", "Latitude", "PrevLongitude", "PrevLatitude"))
+    # Calculate the difference between two records
+    dataframe = dataframe.withColumn("LastLatitude", F.lag("Latitude").over(windowSpec))
+    dataframe = dataframe.withColumn("LastLongitude", F.lag("Longitude").over(windowSpec))
+
+    # To avoid NoneType error, need to remove the Data that has no previous record
+    dataframe = dataframe.filter(dataframe["LastLatitude"].isNotNull() & dataframe["LastLongitude"].isNotNull())
+
+    # Calculate distance using the UDF distance function
+    dataframe = dataframe.withColumn("Distance",
+                                     distance_udf("Longitude", "Latitude", "LastLongitude", "LastLatitude"))
 
     # Calculate the total distance traveled by each user each day
-    daily_distance = dataframe.groupBy("UserID", "Date").agg(F.sum("Distance").alias("TotalDistance"))
+    daily_distance = dataframe.groupBy("UserID", "Date").agg(F.sum("Distance").alias("DailyDistance"))
 
-    # Define the window specification for finding the maximum distance day
-    windowSpecUser = Window.partitionBy("UserID").orderBy(F.desc("TotalDistance"), F.asc("Date"))
+    #  Define the window specification and orderBy DailyDistance and Date
+    windowSpecUser = Window.partitionBy("UserID").orderBy(F.desc("DailyDistance"), F.asc("Date"))
 
-    # Find the day with the maximum distance traveled for each user
-    daily_distance = daily_distance.withColumn("Rank", F.row_number().over(windowSpecUser))
-    max_distance_day = daily_distance.filter(daily_distance.Rank == 1).select("UserID", "Date").orderBy("UserID")
+    #   From:Spark SQL Row_number() PartitionBy Sort Desc
+    #   https://stackoverflow.com/questions/35247168/spark-sql-row-number-partitionby-sort-desc
+    daily_distance = daily_distance.withColumn("DistanceRank", F.row_number().over(windowSpecUser))
 
-    # Find the total distance traveled by all users on all days
-    total_distance_all = daily_distance.agg(F.sum("TotalDistance").alias("TotalDistanceAll"))
+    # Get who and when travelled the most
+    travelled_the_most = daily_distance.filter("DistanceRank=1").select("UserID", "Date").orderBy("UserID")
 
-    return max_distance_day, total_distance_all
+    # Find the total distance of all users all dates,use head to get the first row from dataframe in order to get numerical data
+    all_distance = dataframe.agg(F.sum("Distance").alias("AllDistanceOfAllUsers")).head()["AllDistanceOfAllUsers"]
 
-#Display the results
+    return travelled_the_most, all_distance
+
+
+# Display the results
 print("Task 6: ")
 max_distance_day, total_distance_all = task_6(df_task_1)
 
-print("每个用户行走最远的一天:")
+print("The furthest day each user has travelled:")
 max_distance_day.show()
 
-# 展示所有用户所有天的总行走距离
-print("所有用户所有天的总行走距离:")
-total_distance_all.show()
+print("Total distance travelled by all users on all days: ", total_distance_all, "km")
+
+
+def task_7(dataframe):
+    # PySpark UDF’s are similar to UDF on traditional databases.
+    # In PySpark, you create a function in a Python syntax and wrap it with PySpark SQL udf() or register it as udf and use it on DataFrame and SQL respectively.
+    # From https://sparkbyexamples.com/pyspark/pyspark-udf-user-defined-function/
+    # Use DoubleType to get the most accurate results
+    distance_udf = F.udf(distance, DoubleType())
+
+    # Define the window specification and orderBy Timestamp
+    windowSpec = Window.partitionBy("UserID", "Date").orderBy("Timestamp")
+
+    # Calculate the difference between two records
+    dataframe = dataframe.withColumn("LastLatitude", F.lag("Latitude").over(windowSpec))
+    dataframe = dataframe.withColumn("LastLongitude", F.lag("Longitude").over(windowSpec))
+
+    # To avoid NoneType error, need to remove the Data that has no previous record
+    dataframe = dataframe.filter(dataframe["LastLatitude"].isNotNull() & dataframe["LastLongitude"].isNotNull())
+
+    # Calculate distance using the UDF distance function
+    dataframe = dataframe.withColumn("Distance",
+                                     distance_udf("Longitude", "Latitude", "LastLongitude", "LastLatitude"))
+    # Calculate time difference, and change timestamp to hours format
+    dataframe = dataframe.withColumn("LastTimestamp", F.lag("Timestamp").over(windowSpec))
+    dataframe = dataframe.withColumn("TimeDifference", (F.col("Timestamp") - F.col("LastTimestamp")) * 24)
+
+    # Calculate the speed, as km/hours format
+    # Not sure if there are duplicate records with same timestamp, which may cause denominator be 0
+    # dataframe = dataframe.withColumn("Speed", F.col("Distance") / F.col("TimeDifference"))
+    # Check whether TimeDifference is equal to 0
+    # From PySpark When Otherwise | SQL Case When Usage
+    # https://sparkbyexamples.com/pyspark/pyspark-when-otherwise/
+    dataframe = dataframe.withColumn("Speed", F.when(F.col("TimeDifference") != 0,
+                                                     F.col("Distance") / F.col("TimeDifference")).otherwise(0))
+
+    # Find the day each user has the maximum speed
+    windowSpecUser = Window.partitionBy("UserID").orderBy(F.desc("Speed"), F.asc("Date"))
+    dataframe = dataframe.withColumn("SpeedRank", F.row_number().over(windowSpecUser))
+    # Get the earliest day with maximum speed of each user
+    fastest_speed_day = dataframe.filter("SpeedRank=1").select("UserID", "Date", "Speed").orderBy("UserID", "Date")
+
+    return fastest_speed_day
+
+
+# Display the results
+print("Task 7: ")
+task_7(df_task_1).show()
