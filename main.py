@@ -1,6 +1,8 @@
 from pyspark.sql import SparkSession, Window
 import pyspark.sql.functions as F
 from pyspark.sql.functions import unix_timestamp, from_unixtime, col, expr
+from pyspark.sql.types import FloatType
+from math import radians, sin, cos, sqrt, atan2
 
 # Start a SparkSession
 spark = SparkSession.builder.appName("PYSPARK").getOrCreate()
@@ -38,11 +40,10 @@ def task_1(dataframe):
     return dataframe
 
 
-df_task_1 = task_1(df)
-
 # Display the results
-print("Task 1: ")
-df_task_1.show()
+df_task_1 = task_1(df)
+# print("Task 1: ")
+# df_task_1.show()
 
 
 # Task 2 function
@@ -133,9 +134,9 @@ def task_4(dataframe):
 
 
 # Display the results
-print("Task 4: ")
-top_five_users_week = task_4(df_task_1)
-top_five_users_week.show()
+# print("Task 4: ")
+# top_five_users_week = task_4(df_task_1)
+# top_five_users_week.show()
 
 
 # Task 5 function
@@ -155,3 +156,68 @@ def task_5(dataframe):
 # print("Task 5: ")
 # top_five_span = task_5(df_task_1)
 # top_five_span.show()
+
+# Task 6 function
+def haversine(lon1, lat1, lon2, lat2):
+    """Calculate the great circle distance between two points on the earth."""
+    # 检查经纬度值是否为 None
+    if None in (lon1, lat1, lon2, lat2):
+        return 0.0  # 如果有任何值为 None，返回距离 0
+
+    # 将经纬度转换为弧度
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+
+    # 计算经纬度差
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+
+    # 哈弗辛公式
+    a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+
+    # 地球半径（千米）
+    r = 6371
+
+    return c * r
+
+
+
+
+
+def task_6(dataframe):
+    # Register the UDF
+    haversine_udf = F.udf(haversine, FloatType())
+
+    # Define the window specification for lag function
+    windowSpec = Window.partitionBy("UserID", "Date").orderBy("Timestamp")
+
+    # Calculate the distance between consecutive points
+    dataframe = dataframe.withColumn("PrevLatitude", F.lag("Latitude").over(windowSpec))
+    dataframe = dataframe.withColumn("PrevLongitude", F.lag("Longitude").over(windowSpec))
+    dataframe = dataframe.withColumn("Distance", haversine_udf("Longitude", "Latitude", "PrevLongitude", "PrevLatitude"))
+
+    # Calculate the total distance traveled by each user each day
+    daily_distance = dataframe.groupBy("UserID", "Date").agg(F.sum("Distance").alias("TotalDistance"))
+
+    # Define the window specification for finding the maximum distance day
+    windowSpecUser = Window.partitionBy("UserID").orderBy(F.desc("TotalDistance"), F.asc("Date"))
+
+    # Find the day with the maximum distance traveled for each user
+    daily_distance = daily_distance.withColumn("Rank", F.row_number().over(windowSpecUser))
+    max_distance_day = daily_distance.filter(daily_distance.Rank == 1).select("UserID", "Date").orderBy("UserID")
+
+    # Find the total distance traveled by all users on all days
+    total_distance_all = daily_distance.agg(F.sum("TotalDistance").alias("TotalDistanceAll"))
+
+    return max_distance_day, total_distance_all
+
+#Display the results
+print("Task 6: ")
+max_distance_day, total_distance_all = task_6(df_task_1)
+
+print("每个用户行走最远的一天:")
+max_distance_day.show()
+
+# 展示所有用户所有天的总行走距离
+print("所有用户所有天的总行走距离:")
+total_distance_all.show()
