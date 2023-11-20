@@ -67,9 +67,9 @@ def task_2(dataframe):
 
 
 # Display the results
-print("Task 2: ")
-top_five_users = task_2(task_1(df))
-top_five_users.show()
+# print("Task 2: ")
+# top_five_users = task_2(task_1(df))
+# top_five_users.show()
 
 
 # Task 3 function
@@ -94,34 +94,42 @@ def task_3(dataframe):
 
 
 # Display the results
-print("Task 3: ")
-weeks_per_user = task_3(df_task_1)
-weeks_per_user.show()
-
+# print("Task 3: ")
+# weeks_per_user = task_3(df_task_1)
+# weeks_per_user.show()
 
 # Task 4 function
 
 def task_4(dataframe):
-    # Step 1: Find the minimum latitude for each user on each day
-    min_latitudes_per_day = dataframe.groupBy("UserID", "Date").agg(F.min("Latitude").alias("MinLatitude"))
+    # Get the minimum latitude for each user on each day
+    min_latitudes_per_user_per_day = dataframe.groupBy("UserID", "Date").agg(F.min("Latitude").alias("MinLatitude"))
+    # min_latitudes_per_user_per_day.show()
 
-    # Step 2: Find the overall minimum latitude for each user
-    # This gives us the southernmost point each user has reached
-    min_latitudes = min_latitudes_per_day.groupBy("UserID").agg(F.min("MinLatitude").alias("SouthernMostLatitude"))
+    # Get the overall minimum latitudes of each user (which is the Most Southern Latitude),by groupby userID again and get the minimum latitude
+    min_latitudes_per_user = min_latitudes_per_user_per_day.groupBy("UserID").agg(
+        F.min("MinLatitude").alias("MostSouthernLatitude"))
+    # min_latitudes_per_user.show()
 
-    # Step 3: Find the first date when the user reached this southernmost point
-    # For this, we first need to aggregate and find the first date for each user
-    first_dates = min_latitudes_per_day.groupBy("UserID").agg(F.first("Date").alias("DateOfSouthernMost"))
+    # Rename the column in "min_latitudes_per_user_per_day",ready for joining
+    # In this situation "MostSouthernLatitude" is not the real overall MostSouthernLatitude, it's just for joining and matching
+    new_min_latitudes_per_day = min_latitudes_per_user_per_day.withColumnRenamed("MinLatitude", "MostSouthernLatitude")
+    # new_min_latitudes_per_day.show()
 
-    # Step 4: Now combine the results from Step 2 and Step 3 into one DataFrame
-    # This DataFrame contains each user's southernmost latitude and the first date they reached this point
-    overall_min_latitudes = min_latitudes.join(first_dates, "UserID")
+    # Join the dataframes with "UserID" (primary),
+    # and use the "overall" MostSouthernLatitude in "min_latitudes_per_user" to join the "Fake" MostSouthernLatitude Colunm in new_min_latitudes_per_day
+    # Let the "overall" MostSouthernLatitude to match the "MinLatitude"(Which is the "Fake" MostSouthernLatitude Colunm now) in min_latitudes_per_user_per_day
+    # Then will get a form with all information needed
+    southernmost_dates = new_min_latitudes_per_day.join(min_latitudes_per_user, ["UserID", "MostSouthernLatitude"])
+    # southernmost_dates.show()
 
-    # Step 5: Get the top 5 users who reached the most southern points
-    top_5_southern_users = overall_min_latitudes.orderBy("SouthernMostLatitude", "UserID").limit(5)
+    # Get the records with the earliest date
+    southernmost_dates = southernmost_dates.groupBy("UserID", "MostSouthernLatitude").agg(
+        F.min("Date").alias("FirstDateOfMostSouthern"))
 
-    return top_5_southern_users
+    # Get top 5 users
+    top_5_most_southern_users = southernmost_dates.orderBy("MostSouthernLatitude", "UserID").limit(5)
 
+    return top_5_most_southern_users
 
 
 # Display the results
@@ -143,8 +151,7 @@ def task_5(dataframe):
 
     return top_five_span_users
 
-
 # Display the results
-print("Task 5: ")
-top_five_span = task_5(df_task_1)
-top_five_span.show()
+# print("Task 5: ")
+# top_five_span = task_5(df_task_1)
+# top_five_span.show()
