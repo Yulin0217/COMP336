@@ -8,7 +8,7 @@ from math import radians, sin, cos, sqrt, atan2
 spark = SparkSession.builder.appName("PYSPARK").getOrCreate()
 
 # Change the log display level
-spark.sparkContext.setLogLevel("WARN")
+# spark.sparkContext.setLogLevel("WARN")
 
 # Set the file path
 df_path = 'dataset.txt'
