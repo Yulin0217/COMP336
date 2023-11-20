@@ -8,7 +8,7 @@ from math import radians, sin, cos, sqrt, atan2
 spark = SparkSession.builder.appName("PYSPARK").getOrCreate()
 
 # Change the log display level
-# spark.sparkContext.setLogLevel("WARN")
+spark.sparkContext.setLogLevel("WARN")
 
 # Set the file path
 df_path = 'dataset.txt'
@@ -168,8 +168,10 @@ top_five_span.show()
 # From :Getting distance between two points based on latitude/longitude
 # https://stackoverflow.com/questions/19412462/getting-distance-between-two-points-based-on-latitude-longitude
 def distance(lon1, lat1, lon2, lat2):
+    # Not sure about this, it's 6373km on stackoverflow, but 6371km on Google
     # Earth radius (In kilometres)）
-    R = 6373.0
+    R = 6371.0
+    # R = 6373.0
     # Converting latitude and longitude to radians
     lat1 = radians(lat1)
     lon1 = radians(lon1)
