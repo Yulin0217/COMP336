@@ -15,6 +15,7 @@ df_path = 'dataset.txt'
 
 # Read the data with inferred schema to auto judge data types
 df = spark.read.csv(df_path, header=True, inferSchema=True)
+
 # To keep the Date format correct (Without "Time" IN "Date" to avoid incorrect calculate)
 # Because using auto inferSchema, the "Date" will be "yy-mm-dd hh-mm-ss", which leads to mess
 df = df.withColumn("Date", F.date_format("Date", "yyyy-MM-dd"))
