@@ -15,7 +15,6 @@ df_path = 'dataset.txt'
 
 # Read the data with inferred schema to auto judge data types
 df = spark.read.csv(df_path, header=True, inferSchema=True)
-
 # To keep the Date format correct (Without "Time" IN "Date" to avoid incorrect calculate)
 # Because using auto inferSchema, the "Date" will be "yy-mm-dd hh-mm-ss", which leads to mess
 df = df.withColumn("Date", F.date_format("Date", "yyyy-MM-dd"))
@@ -193,7 +192,7 @@ def distance(lon1, lat1, lon2, lat2):
 def task_6(dataframe):
     # PySpark UDF’s are similar to UDF on traditional databases.
     # In PySpark, you create a function in a Python syntax and wrap it with PySpark SQL udf() or register it as udf and use it on DataFrame and SQL respectively.
-    # Explanation From https://sparkbyexamples.com/pyspark/pyspark-udf-user-defined-function/
+    # From https://sparkbyexamples.com/pyspark/pyspark-udf-user-defined-function/
     # Use DoubleType to get the most accurate results
     distance_udf = F.udf(distance, DoubleType())
 
@@ -201,18 +200,18 @@ def task_6(dataframe):
     windowSpec = Window.partitionBy("UserID", "Date").orderBy("Timestamp")
 
     # Calculate the difference between two records
-    latitude_diff = dataframe.withColumn("LastLatitude", F.lag("Latitude").over(windowSpec))
-    both_diff = latitude_diff.withColumn("LastLongitude", F.lag("Longitude").over(windowSpec))
+    dataframe = dataframe.withColumn("LastLatitude", F.lag("Latitude").over(windowSpec))
+    dataframe = dataframe.withColumn("LastLongitude", F.lag("Longitude").over(windowSpec))
 
     # To avoid NoneType error, need to remove the Data that has no previous record
-    both_diff = both_diff.filter(dataframe["LastLatitude"].isNotNull() & dataframe["LastLongitude"].isNotNull())
+    dataframe = dataframe.filter(dataframe["LastLatitude"].isNotNull() & dataframe["LastLongitude"].isNotNull())
 
     # Calculate distance using the UDF distance function
-    with_distance = both_diff.withColumn("Distance",
+    dataframe = dataframe.withColumn("Distance",
                                      distance_udf("Longitude", "Latitude", "LastLongitude", "LastLatitude"))
 
     # Calculate the total distance traveled by each user each day
-    daily_distance = with_distance.groupBy("UserID", "Date").agg(F.sum("Distance").alias("DailyDistance"))
+    daily_distance = dataframe.groupBy("UserID", "Date").agg(F.sum("Distance").alias("DailyDistance"))
 
     #  Define the window specification and orderBy DailyDistance and Date
     windowSpecUser = Window.partitionBy("UserID").orderBy(F.desc("DailyDistance"), F.asc("Date"))
@@ -243,7 +242,7 @@ print("Total distance travelled by all users on all days: ", total_distance_all,
 def task_7(dataframe):
     # PySpark UDF’s are similar to UDF on traditional databases.
     # In PySpark, you create a function in a Python syntax and wrap it with PySpark SQL udf() or register it as udf and use it on DataFrame and SQL respectively.
-    # Explanation From https://sparkbyexamples.com/pyspark/pyspark-udf-user-defined-function/
+    # From https://sparkbyexamples.com/pyspark/pyspark-udf-user-defined-function/
     # Use DoubleType to get the most accurate results
     distance_udf = F.udf(distance, DoubleType())
 
@@ -251,19 +250,18 @@ def task_7(dataframe):
     windowSpec = Window.partitionBy("UserID", "Date").orderBy("Timestamp")
 
     # Calculate the difference between two records
-    latitude_diff = dataframe.withColumn("LastLatitude", F.lag("Latitude").over(windowSpec))
-    both_diff = latitude_diff.withColumn("LastLongitude", F.lag("Longitude").over(windowSpec))
+    dataframe = dataframe.withColumn("LastLatitude", F.lag("Latitude").over(windowSpec))
+    dataframe = dataframe.withColumn("LastLongitude", F.lag("Longitude").over(windowSpec))
 
     # To avoid NoneType error, need to remove the Data that has no previous record
-    both_diff = both_diff.filter(dataframe["LastLatitude"].isNotNull() & dataframe["LastLongitude"].isNotNull())
+    dataframe = dataframe.filter(dataframe["LastLatitude"].isNotNull() & dataframe["LastLongitude"].isNotNull())
 
     # Calculate distance using the UDF distance function
-    with_distance = both_diff.withColumn("Distance",
-                                         distance_udf("Longitude", "Latitude", "LastLongitude", "LastLatitude"))
-
+    dataframe = dataframe.withColumn("Distance",
+                                     distance_udf("Longitude", "Latitude", "LastLongitude", "LastLatitude"))
     # Calculate time difference, and change timestamp to hours format
-    time_diff = with_distance.withColumn("LastTimestamp", F.lag("Timestamp").over(windowSpec))
-    time_diff = time_diff.withColumn("TimeDifference", (F.col("Timestamp") - F.col("LastTimestamp")) * 24)
+    dataframe = dataframe.withColumn("LastTimestamp", F.lag("Timestamp").over(windowSpec))
+    dataframe = dataframe.withColumn("TimeDifference", (F.col("Timestamp") - F.col("LastTimestamp")) * 24)
 
     # Calculate the speed, as km/hours format
     # Not sure if there are duplicate records with same timestamp, which may cause denominator be 0
@@ -271,14 +269,14 @@ def task_7(dataframe):
     # Check whether TimeDifference is equal to 0
     # From PySpark When Otherwise | SQL Case When Usage
     # https://sparkbyexamples.com/pyspark/pyspark-when-otherwise/
-    with_speed = time_diff.withColumn("Speed", F.when(F.col("TimeDifference") != 0,
+    dataframe = dataframe.withColumn("Speed", F.when(F.col("TimeDifference") != 0,
                                                      F.col("Distance") / F.col("TimeDifference")).otherwise(0))
 
     # Find the day each user has the maximum speed
     windowSpecUser = Window.partitionBy("UserID").orderBy(F.desc("Speed"), F.asc("Date"))
-    speed_rank = with_speed.withColumn("SpeedRank", F.row_number().over(windowSpecUser))
+    dataframe = dataframe.withColumn("SpeedRank", F.row_number().over(windowSpecUser))
     # Get the earliest day with maximum speed of each user
-    fastest_speed_day = speed_rank.filter("SpeedRank=1").select("UserID", "Date", "Speed").orderBy("UserID", "Date")
+    fastest_speed_day = dataframe.filter("SpeedRank=1").select("UserID", "Date", "Speed").orderBy("UserID", "Date")
 
     return fastest_speed_day
 
